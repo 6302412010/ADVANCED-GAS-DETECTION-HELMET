@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gas Detection System - Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root{
+  --bg:#f4f6f9;--ink:#2c3e50;--ink2:#34495e;--pri:#16a085;--pri2:#1abc9c;
+  --ok:#27ae60;--ok2:#2ecc71;--card:#fff;
+}
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:var(--bg);margin:0;color:var(--ink)}
+header{background:var(--ink2);color:#fff;padding:16px;text-align:center}
+nav{background:var(--ink);padding:10px;color:#fff;display:flex;gap:8px;align-items:center}
+nav .spacer{flex:1}
+nav button{background:var(--pri);border:none;padding:10px 14px;border-radius:6px;color:#fff;cursor:pointer}
+nav button:hover{background:var(--pri2)}
+.hidden{display:none}
+.container{padding:20px;max-width:1100px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.card{background:var(--card);padding:16px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.card h3{margin:0 0 10px}
+input,select{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;margin:6px 0 12px;background:#fff}
+label{font-size:13px;color:#4a5568}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{background:var(--pri);color:#fff;border:none;padding:10px 14px;border-radius:8px;cursor:pointer}
+.btn:hover{background:var(--pri2)}
+.btn.ok{background:var(--ok)}
+.btn.ok:hover{background:var(--ok2)}
+.btn.ghost{background:#e9eef3;color:#223}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid #eee;text-align:center}
+th{background:#eef9f6}
+.profile-pic{width:100px;height:100px;border-radius:50%;object-fit:cover;border:2px solid #ccc}
+.toggle{display:flex;gap:8px;align-items:center}
+.tip{font-size:12px;color:#6b7280;margin-top:-6px;margin-bottom:10px}
+.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef;border:1px solid #dde;color:#334}
+.muted{color:#6b7280}
+</style>
+</head>
+<body>
+
+<header><h1>Gas Detection System - Admin</h1></header>
+
+<nav id="menu" class="hidden">
+  <button onclick="showSection('dashboard')">Dashboard</button>
+  <button onclick="showSection('profile')">Profile</button>
+  <button onclick="showSection('adminPanel')">Admin Panel</button>
+  <div class="spacer"></div>
+  <span id="whoami" class="pill"></span>
+  <button class="btn ghost" onclick="logout()">Logout</button>
+</nav>
+
+<div class="container">
+
+  <!-- Auth -->
+  <div id="auth">
+    <div class="grid">
+      <div class="card" id="loginCard">
+        <h3>Login</h3>
+        <input type="email" id="loginEmail" placeholder="Email">
+        <input type="password" id="loginPassword" placeholder="Password">
+        <div class="actions">
+          <button class="btn ok" onclick="login()">Login</button>
+          <button class="btn ghost" onclick="toggleAuth('signup')">Create Account</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="signupCard">
+        <h3>Sign Up</h3>
+        <input type="email" id="signupEmail" placeholder="Email">
+        <input type="password" id="signupPassword" placeholder="Password">
+        <div class="actions">
+          <button class="btn ok" onclick="signup()">Sign Up</button>
+          <button class="btn ghost" onclick="toggleAuth('login')">Back to Login</button>
+        </div>
+        <p class="tip">Passwords are stored locally for demo purposes.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard" class="hidden">
+    <div class="grid">
+      <div class="card">
+        <h3>Gas Levels Inside</h3>
+        <canvas id="insideChart"></canvas>
+      </div>
+      <div class="card">
+        <h3>Gas Levels Outside</h3>
+        <canvas id="outsideChart"></canvas>
+      </div>
+      <div class="card" style="grid-column:1/-1">
+        <h3>Gas Level History</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th><th>CO2</th><th>CH4</th><th>O2</th><th>SO2</th>
+            </tr>
+          </thead>
+          <tbody id="historyTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile -->
+  <div id="profile" class="hidden"></div>
+
+  <!-- Admin Panel -->
+  <div id="adminPanel" class="hidden">
+    <div class="card">
+      <h3>Admin Panel: Users</h3>
+      <table>
+        <thead><tr><th>Email</th><th>Name</th><th>Actions</th></tr></thead>
+        <tbody id="adminUserTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* -----------------------------
+   STATE
+----------------------------- */
+let currentUser = null;
+let insideChart, outsideChart;
+let historyData = [];
+let monitorTimer = null;
+const cooldownMs = 60_000;
+const lastAlertAt = new Map();
+
+/* -----------------------------
+   AUTH
+----------------------------- */
+function toggleAuth(which){
+  document.getElementById('loginCard').classList.toggle('hidden', which==='signup');
+  document.getElementById('signupCard').classList.toggle('hidden', which==='login');
+}
+
+function signup(){
+  const email = document.getElementById('signupEmail').value.trim();
+  const password = document.getElementById('signupPassword').value;
+  if(!email || !password){ alert('Fill all fields'); return; }
+  if(localStorage.getItem(email)){ alert('User exists'); return; }
+
+  const userData = {email,password,role:'admin',profile:{name:'',picture:''}};
+  localStorage.setItem(email, JSON.stringify(userData));
+  alert('Signup successful'); toggleAuth('login');
+}
+
+function login(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const userData = JSON.parse(localStorage.getItem(email));
+  if(!userData || userData.password !== password){ alert('Invalid'); return; }
+
+  currentUser = userData;
+  document.getElementById('menu').classList.remove('hidden');
+  document.getElementById('auth').classList.add('hidden');
+  document.getElementById('whoami').textContent = email;
+  showSection('dashboard');
+  startGasMonitoring();
+  loadAdminUsers();
+}
+
+function logout(){
+  currentUser=null; historyData=[];
+  if(insideChart) insideChart.destroy();
+  if(outsideChart) outsideChart.destroy();
+  if(monitorTimer){ clearInterval(monitorTimer); monitorTimer=null; }
+  document.getElementById('menu').classList.add('hidden');
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('adminPanel').classList.add('hidden');
+  document.getElementById('auth').classList.remove('hidden');
+}
+
+/* -----------------------------
+   NAV
+----------------------------- */
+function showSection(id){
+  ['dashboard','profile','adminPanel'].forEach(s=>document.getElementById(s).classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+/* -----------------------------
+   ADMIN USERS
+----------------------------- */
+function loadAdminUsers(){
+  const tbody = document.getElementById('adminUserTable');
+  tbody.innerHTML = '';
+  Object.keys(localStorage).forEach(k=>{
+    const user = JSON.parse(localStorage.getItem(k));
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${user.email}</td><td>${user.profile.name||''}</td>
+      <td>
+        <button class="btn" onclick='editUser("${user.email}")'>Edit</button>
+        <button class="btn ghost" onclick='deleteUser("${user.email}")'>Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function editUser(email){
+  alert('Edit user: '+email+' (implement profile form)');
+}
+
+function deleteUser(email){
+  if(confirm('Delete '+email+'?')){ localStorage.removeItem(email); loadAdminUsers(); }
+}
+
+/* -----------------------------
+   GAS MONITORING
+----------------------------- */
+function startGasMonitoring(){
+  const ctx1 = document.getElementById('insideChart').getContext('2d');
+  const ctx2 = document.getElementById('outsideChart').getContext('2d');
+
+  insideChart = new Chart(ctx1,{type:'line',data:{labels:[],datasets:[{label:'CO2',data:[],borderColor:'#16a085',fill:false},{label:'CH4',data:[],borderColor:'#27ae60',fill:false},{label:'O2',data:[],borderColor:'#3498db',fill:false},{label:'SO2',data:[],borderColor:'#e74c3c',fill:false}]}});
+  outsideChart = new Chart(ctx2,{type:'line',data:{labels:[],datasets:[{label:'CO2',data:[],borderColor:'#16a085',fill:false},{label:'CH4',data:[],borderColor:'#27ae60',fill:false},{label:'O2',data:[],borderColor:'#3498db',fill:false},{label:'SO2',data:[],borderColor:'#e74c3c',fill:false}]}});
+  
+  monitorTimer = setInterval(()=>{
+    const time = new Date().toLocaleTimeString();
+    const inside = {CO2: Math.random()*1000, CH4: Math.random()*100, O2: 18+Math.random()*5, SO2: Math.random()*10};
+    addHistory(time,inside);
+    ['CO2','CH4','O2','SO2'].forEach(k=>{
+      insideChart.data.datasets.find(ds=>ds.label===k).data.push(inside[k].toFixed(1));
+      outsideChart.data.datasets.find(ds=>ds.label===k).data.push(inside[k].toFixed(1));
+    });
+    insideChart.data.labels.push(time);
+    outsideChart.data.labels.push(time);
+    insideChart.update(); outsideChart.update();
+  },3000);
+}
+
+function addHistory(time,d){
+  historyData.push({time, ...d});
+  const tbody = document.getElementById('historyTable');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${time}</td><td>${d.CO2.toFixed(1)}</td><td>${d.CH4.toFixed(1)}</td><td>${d.O2.toFixed(1)}</td><td>${d.SO2.toFixed(1)}</td>`;
+  tbody.appendChild(tr);
+  if(tbody.children.length>20) tbody.removeChild(tbody.children[0]);
+}
+</script>
+
+</body>
+</html>

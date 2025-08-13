@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Gas Detection System</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f9;--ink:#2c3e50;--ink2:#34495e;--pri:#16a085;--pri2:#1abc9c;--ok:#27ae60;--ok2:#2ecc71;--card:#fff;--warn:#e67e22;--danger:#e74c3c;
+  }
+  *{box-sizing:border-box}
+  body{font-family:Arial, sans-serif;background:var(--bg);margin:0;color:var(--ink)}
+  header{background:var(--ink2);color:#fff;padding:16px;text-align:center}
+  nav{background:var(--ink);padding:10px;color:#fff;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  nav .spacer{flex:1}
+  nav button{background:var(--pri);border:none;padding:10px 14px;border-radius:6px;color:#fff;cursor:pointer}
+  nav button:hover{background:var(--pri2)}
+  .hidden{display:none}
+  .container{padding:20px;max-width:1200px;margin:0 auto}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+  .card{background:var(--card);padding:16px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+  .card h3{margin:0 0 10px}
+  input,select,textarea{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;margin:6px 0 12px;background:#fff}
+  label{font-size:13px;color:#4a5568}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{background:var(--pri);color:#fff;border:none;padding:10px 14px;border-radius:8px;cursor:pointer}
+  .btn:hover{background:var(--pri2)}
+  .btn.ok{background:var(--ok)}
+  .btn.ok:hover{background:var(--ok2)}
+  .btn.ghost{background:#e9eef3;color:#223}
+  .btn.warn{background:var(--warn)}
+  .btn.danger{background:var(--danger)}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid #eee;text-align:center}
+  th{background:#eef9f6}
+  .profile-pic{width:100px;height:100px;border-radius:50%;object-fit:cover;border:2px solid #ccc}
+  .toggle{display:flex;gap:8px;align-items:center}
+  .tip{font-size:12px;color:#6b7280;margin-top:-6px;margin-bottom:10px}
+  .pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef;border:1px solid #dde;color:#334}
+  .muted{color:#6b7280}
+  .scroll{max-height:380px;overflow:auto}
+  .small{font-size:12px}
+  .searchbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  code.inline{background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 6px;border-radius:6px}
+</style>
+</head>
+<body>
+
+<header><h1>Gas Detection System</h1></header>
+
+<nav id="menu" class="hidden">
+  <button onclick="showSection('dashboard')">Dashboard</button>
+  <button onclick="showSection('profile')">Profile</button>
+  <button id="adminNav" class="hidden" onclick="showSection('admin')">Admin</button>
+  <div class="spacer"></div>
+  <span id="whoami" class="pill"></span>
+  <button class="btn ghost" onclick="logout()">Logout</button>
+</nav>
+
+<div class="container">
+
+  <!-- Auth -->
+  <div id="auth">
+    <div class="grid">
+      <div class="card" id="loginCard">
+        <h3>Login</h3>
+        <input type="email" id="loginEmail" placeholder="Email">
+        <input type="password" id="loginPassword" placeholder="Password">
+        <div class="actions">
+          <button class="btn ok" onclick="login()">Login</button>
+          <button class="btn ghost" onclick="toggleAuth('signup')">Create Account</button>
+        </div>
+        <p class="tip">Demo admin is seeded on first load: <code class="inline">admin@example.com / admin123</code></p>
+      </div>
+
+      <div class="card hidden" id="signupCard">
+        <h3>Sign Up</h3>
+        <input type="email" id="signupEmail" placeholder="Email">
+        <input type="password" id="signupPassword" placeholder="Password">
+        <div class="actions">
+          <button class="btn ok" onclick="signup()">Sign Up</button>
+          <button class="btn ghost" onclick="toggleAuth('login')">Back to Login</button>
+        </div>
+        <p class="tip">Passwords are stored locally for demo only. Use a backend + hashing in production.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard" class="hidden">
+    <div class="grid">
+      <div class="card">
+        <h3>Gas Levels Inside</h3>
+        <canvas id="insideChart"></canvas>
+      </div>
+      <div class="card">
+        <h3>Gas Levels Outside</h3>
+        <canvas id="outsideChart"></canvas>
+      </div>
+      <div class="card">
+        <h3>Depth After Sea Level</h3>
+        <p id="depthValue" class="muted">—</p>
+        <div class="tip">Alerts trigger if depth exceeds your configured threshold.</div>
+        <div class="actions">
+          <button class="btn" onclick="testBrowserNotification()">Test Browser Notification</button>
+          <button class="btn" onclick="testSms()">Test SMS (via webhook)</button>
+          <button class="btn" onclick="testEmail()">Test Email (via webhook)</button>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column:1/-1">
+        <h3>Gas Level History</h3>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>CO2 (ppm)</th>
+                <th>CH4 (ppm)</th>
+                <th>O2 (ppm)</th>
+                <th>SO2 (ppm)</th>
+              </tr>
+            </thead>
+            <tbody id="historyTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile -->
+  <div id="profile" class="hidden">
+    <div class="grid">
+      <div class="card">
+        <h3>Profile</h3>
+        <img id="profileImage" class="profile-pic" src="https://via.placeholder.com/100" alt="Profile Picture">
+        <input type="file" id="profilePicInput" accept="image/*" onchange="uploadProfilePic(event)">
+        <label>Full Name</label>
+        <input type="text" id="profileName" placeholder="Full Name">
+        <label>Email</label>
+        <input type="email" id="profileEmail" placeholder="Email" disabled>
+        <div class="row">
+          <div>
+            <label>Gender</label>
+            <select id="profileGender">
+              <option value="">—</option>
+              <option>Male</option>
+              <option>Female</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div>
+            <label>Age</label>
+            <input type="number" id="profileAge" placeholder="Age">
+          </div>
+        </div>
+        <label>Address</label>
+        <input type="text" id="profileAddress" placeholder="Address">
+
+        <h4>Change Password</h4>
+        <div class="row">
+          <input type="password" id="newPassword" placeholder="New Password">
+          <button class="btn" onclick="changeMyPassword()">Update Password</button>
+        </div>
+
+        <div class="actions"><button class="btn ok" onclick="saveProfile()">Save Profile</button></div>
+      </div>
+
+      <div class="card">
+        <h3>Alert Preferences</h3>
+        <div class="toggle"><input type="checkbox" id="notifBrowser"><label for="notifBrowser">Enable Browser Notifications</label></div>
+        <div class="tip">Requires HTTPS and permission. We’ll ask on login if enabled.</div>
+        <div class="toggle"><input type="checkbox" id="notifSms"><label for="notifSms">Enable SMS Alerts (via your webhook)</label></div>
+        <label>Phone (E.164):</label>
+        <input type="tel" id="profilePhone" placeholder="+15551234567">
+        <div class="toggle"><input type="checkbox" id="notifEmail"><label for="notifEmail">Enable Email Alerts (via your webhook)</label></div>
+        <label>Alert Email:</label>
+        <input type="email" id="alertEmail" placeholder="alerts@example.com">
+
+        <h4>Thresholds</h4>
+        <div class="row3">
+          <div>
+            <label>CO2 max (ppm)</label>
+            <input type="number" id="thCO2" value="800">
+          </div>
+          <div>
+            <label>CH4 max (ppm)</label>
+            <input type="number" id="thCH4" value="50">
+          </div>
+          <div>
+            <label>O2 min (%)</label>
+            <input type="number" id="thO2" value="19">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>SO2 max (ppm)</label>
+            <input type="number" id="thSO2" value="5">
+          </div>
+          <div>
+            <label>Depth max (m)</label>
+            <input type="number" id="thDepth" value="150">
+          </div>
+        </div>
+
+        <h4>Webhook Endpoints</h4>
+        <label>SMS Webhook URL (Twilio Function / your API)</label>
+        <input type="url" id="smsWebhook" placeholder="https://your-sms-webhook.example.com/send">
+        <label>Email Webhook URL (SendGrid/SES/your API)</label>
+        <input type="url" id="emailWebhook" placeholder="https://your-email-webhook.example.com/send">
+
+        <div class="actions">
+          <button class="btn" onclick="saveAlerts()">Save Alert Settings</button>
+          <button class="btn ghost" onclick="testBrowserNotification()">Test Browser Notification</button>
+        </div>
+        <p class="tip">
+          Payload we POST:<br>
+          <code class="inline">{ "to": "+15551234567", "subject": "Gas Alert", "message": "CO2 exceeded 800ppm" }</code>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin -->
+  <div id="admin" class="hidden">
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1">
+        <h3>Admin Panel</h3>
+        <p class="tip">Manage users, roles, passwords, and data. (Demo storage: <code class="inline">localStorage</code>)</p>
+      </div>
+
+      <div class="card">
+        <h3>Users</h3>
+        <div class="searchbar">
+          <input id="userSearch" placeholder="Search by email or name" oninput="renderUsersTable()">
+          <button class="btn ghost" onclick="renderUsersTable(true)">Refresh</button>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Name</th>
+                <th>Admin</th>
+                <th class="small">Phone</th>
+                <th class="small">Alerts</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Create User</h3>
+        <input id="adminNewEmail" type="email" placeholder="Email">
+        <input id="adminNewPassword" type="password" placeholder="Temp Password">
+        <div class="toggle"><input id="adminNewIsAdmin" type="checkbox"><label for="adminNewIsAdmin">Make Admin</label></div>
+        <div class="actions">
+          <button class="btn ok" onclick="adminCreateUser()">Create</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Data Export / Import</h3>
+        <div class="actions">
+          <button class="btn" onclick="exportAll()">Export Users (JSON)</button>
+          <input id="importFile" type="file" accept="application/json" onchange="importAll(event)">
+        </div>
+        <p class="tip">Export includes all users stored in localStorage that match this app’s schema.</p>
+      </div>
+
+      <div class="card">
+        <h3>Admin Password</h3>
+        <p class="tip">Change your own password (current admin): <span id="adminWho"></span></p>
+        <div class="row">
+          <input id="adminNewPass" type="password" placeholder="New Password">
+          <button class="btn" onclick="changeMyPassword(true)">Change</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* =========================
+   SEED DEMO ADMIN ON FIRST LOAD
+   ========================= */
+(function seedAdmin(){
+  const key = '__seeded_admin__';
+  if(!localStorage.getItem(key)){
+    const adminEmail = 'admin@example.com';
+    if(!localStorage.getItem(adminEmail)){
+      const userData = {
+        email: adminEmail,
+        password: 'admin123',
+        isAdmin: true,
+        profile:{ name:'Administrator', gender:'', age:'', address:'', picture:'' },
+        alerts:{
+          browser:true, sms:false, email:false,
+          phone:'', emailTo:'',
+          thresholds:{ CO2:800, CH4:50, O2:19, SO2:5, depth:150 },
+          webhooks:{ sms:'', email:'' }
+        }
+      };
+      localStorage.setItem(adminEmail, JSON.stringify(userData));
+    }
+    localStorage.setItem(key, '1');
+  }
+})();
+
+/* =========================
+   BASIC STATE & CONSTANTS
+   ========================= */
+let currentUser = null;
+let insideChart, outsideChart;
+let historyData = [];
+let monitorTimer = null;
+
+// Cooldown map to avoid spamming per alert key
+const cooldownMs = 60_000; // 1 minute cooldown per alert type
+const lastAlertAt = new Map();
+
+/* =========================
+   AUTH
+   ========================= */
+function toggleAuth(which){
+  document.getElementById('loginCard').classList.toggle('hidden', which==='signup');
+  document.getElementById('signupCard').classList.toggle('hidden', which==='login');
+}
+
+function signup(){
+  const email = document.getElementById('signupEmail').value.trim();
+  const password = document.getElementById('signupPassword').value;
+  if(!email || !password){ alert('Please fill all fields.'); return; }
+  if(localStorage.getItem(email)){ alert('User already exists.'); return; }
+
+  const userData = {
+    email, password, isAdmin:false,
+    profile:{ name:'', gender:'', age:'', address:'', picture:'' },
+    alerts:{
+      browser:true, sms:false, email:false,
+      phone:'', emailTo:'',
+      thresholds:{ CO2:800, CH4:50, O2:19, SO2:5, depth:150 },
+      webhooks:{ sms:'', email:'' }
+    }
+  };
+  localStorage.setItem(email, JSON.stringify(userData));
+  alert('Signup successful! Please login.');
+  toggleAuth('login');
+}
+
+async function login(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const userData = safeParse(localStorage.getItem(email));
+  if(!userData || userData.password !== password){ alert('Invalid credentials.'); return; }
+
+  currentUser = userData;
+  // UI
+  document.getElementById('menu').classList.remove('hidden');
+  document.getElementById('auth').classList.add('hidden');
+  document.getElementById('whoami').textContent = email + (currentUser.isAdmin?' (admin)':'');
+  document.getElementById('adminNav').classList.toggle('hidden', !currentUser.isAdmin);
+  document.getElementById('adminWho').textContent = currentUser.email;
+
+  showSection('dashboard');
+
+  loadProfile();
+  loadAlertsForm();
+
+  if(currentUser.alerts?.browser){ await ensureNotificationPermission(); }
+
+  startGasMonitoring();
+}
+
+function logout(){
+  currentUser = null;
+  historyData = [];
+  if(insideChart) insideChart.destroy();
+  if(outsideChart) outsideChart.destroy();
+  if(monitorTimer) { clearInterval(monitorTimer); monitorTimer = null; }
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('profile').classList.add('hidden');
+  document.getElementById('admin').classList.add('hidden');
+  document.getElementById('menu').classList.add('hidden');
+  document.getElementById('auth').classList.remove('hidden');
+  toggleAuth('login');
+}
+
+/* =========================
+   NAV
+   ========================= */
+function showSection(id){
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('profile').classList.add('hidden');
+  document.getElementById('admin').classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+
+  if(id==='admin' && currentUser?.isAdmin){
+    renderUsersTable(true);
+  }
+}
+
+/* =========================
+   PROFILE
+   ========================= */
+function loadProfile(){
+  const p = currentUser.profile || {};
+  document.getElementById('profileName').value = p.name || '';
+  document.getElementById('profileEmail').value = currentUser.email;
+  document.getElementById('profileGender').value = p.gender || '';
+  document.getElementById('profileAge').value = p.age || '';
+  document.getElementById('profileAddress').value = p.address || '';
+  document.getElementById('profileImage').src = p.picture || 'https://via.placeholder.com/100';
+}
+
+function saveProfile(){
+  const p = currentUser.profile;
+  p.name = document.getElementById('profileName').value.trim();
+  p.gender = document.getElementById('profileGender').value;
+  p.age = document.getElementById('profileAge').value;
+  p.address = document.getElementById('profileAddress').value.trim();
+  persistUser();
+  alert('Profile updated!');
+}
+
+function uploadProfilePic(ev){
+  const file = ev.target.files?.[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    document.getElementById('profileImage').src = e.target.result;
+    currentUser.profile.picture = e.target.result;
+    persistUser();
+  };
+  reader.readAsDataURL(file);
+}
+
+function changeMyPassword(isFromAdminCard=false){
+  const fieldId = isFromAdminCard ? 'adminNewPass' : 'newPassword';
+  const np = document.getElementById(fieldId).value;
+  if(!np) return alert('Enter a new password.');
+  currentUser.password = np;
+  persistUser();
+  document.getElementById(fieldId).value = '';
+  alert('Password changed.');
+}
+
+/* =========================
+   ALERT SETTINGS
+   ========================= */
+function loadAlertsForm(){
+  const a = currentUser.alerts || {};
+  document.getElementById('notifBrowser').checked = !!a.browser;
+  document.getElementById('notifSms').checked = !!a.sms;
+  document.getElementById('profilePhone').value = a.phone || '';
+  document.getElementById('notifEmail').checked = !!a.email;
+  document.getElementById('alertEmail').value = a.emailTo || '';
+
+  const t = a.thresholds || {};
+  document.getElementById('thCO2').value = t.CO2 ?? 800;
+  document.getElementById('thCH4').value = t.CH4 ?? 50;
+  document.getElementById('thO2').value  = t.O2  ?? 19;
+  document.getElementById('thSO2').value = t.SO2 ?? 5;
+  document.getElementById('thDepth').value = t.depth ?? 150;
+
+  const w = a.webhooks || {};
+  document.getElementById('smsWebhook').value = w.sms || '';
+  document.getElementById('emailWebhook').value = w.email || '';
+}
+
+function saveAlerts(){
+  const a = currentUser.alerts;
+  a.browser = document.getElementById('notifBrowser').checked;
+  a.sms     = document.getElementById('notifSms').checked;
+  a.email   = document.getElementById('notifEmail').checked;
+  a.phone   = document.getElementById('profilePhone').value.trim();
+  a.emailTo = document.getElementById('alertEmail').value.trim();
+  a.thresholds = {
+    CO2: Number(document.getElementById('thCO2').value),
+    CH4: Number(document.getElementById('thCH4').value),
+    O2:  Number(document.getElementById('thO2').value),
+    SO2: Number(document.getElementById('thSO2').value),
+    depth: Number(document.getElementById('thDepth').value),
+  };
+  a.webhooks = {
+    sms: document.getElementById('smsWebhook').value.trim(),
+    email: document.getElementById('emailWebhook').value.trim(),
+  };
+  persistUser();
+  alert('Alert settings saved!');
+}
+
+/* =========================
+   NOTIFICATIONS / ALERTS
+   ========================= */
+async function ensureNotificationPermission(){
+  if(!('Notification' in window)) return;
+  if(Notification.permission === 'granted') return;
+  if(Notification.permission !== 'denied'){
+    try { await Notification.requestPermission(); } catch {}
+  }
+}
+
+function maybeCooldown(key){
+  const now = Date.now();
+  const last = lastAlertAt.get(key) || 0;
+  if(now - last < cooldownMs) return false;
+  lastAlertAt.set(key, now);
+  return true;
+}
+
+function triggerAlert({key, title, message}){
+  if(!maybeCooldown(key)) return;
+
+  if(currentUser.alerts?.browser && 'Notification' in window){
+    if(Notification.permission === 'granted'){
+      new Notification(title, { body: message });
+    }else{
+      alert(`${title}\n\n${message}`);
+    }
+  }
+
+  if(currentUser.alerts?.sms && currentUser.alerts?.phone && currentUser.alerts?.webhooks?.sms){
+    sendSmsAlert(currentUser.alerts.webhooks.sms, {
+      to: currentUser.alerts.phone, message, subject:title
+    });
+  }
+
+  if(currentUser.alerts?.email && currentUser.alerts?.emailTo && currentUser.alerts?.webhooks?.email){
+    sendEmailAlert(currentUser.alerts.webhooks.email, {
+      to: currentUser.alerts.emailTo, subject:title, message
+    });
+  }
+}
+
+async function postJson(url, payload){
+  try{
+    const ctrl = new AbortController();
+    setTimeout(()=>ctrl.abort(), 8000);
+    const res = await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+      signal: ctrl.signal
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json().catch(()=>({ok:true}));
+  }catch(err){
+    console.error('Webhook error:', err);
+    return { ok:false, error:String(err) };
+  }
+}
+function sendSmsAlert(webhookUrl, data){ postJson(webhookUrl, data); }
+function sendEmailAlert(webhookUrl, data){ postJson(webhookUrl, data); }
+
+// Quick tests
+async function testBrowserNotification(){
+  await ensureNotificationPermission();
+  triggerAlert({key:'test-browser', title:'Test Notification', message:'This is a test browser notification.'});
+}
+function testSms(){ triggerAlert({key:'test-sms', title:'Test SMS', message:'This is a test SMS from Gas Detection System.'}); }
+function testEmail(){ triggerAlert({key:'test-email', title:'Test Email', message:'This is a test Email from Gas Detection System.'}); }
+
+/* =========================
+   CHARTS & MONITORING
+   ========================= */
+function startGasMonitoring(){
+  if(monitorTimer){ clearInterval(monitorTimer); monitorTimer=null; }
+
+  const ctxIn = document.getElementById('insideChart').getContext('2d');
+  const ctxOut = document.getElementById('outsideChart').getContext('2d');
+
+  insideChart = new Chart(ctxIn, {
+    type:'bar',
+    data:{ labels:['CO2','CH4','O2','SO2'], datasets:[{label:'Inside', data:[0,0,0,0], backgroundColor:'rgba(46, 204, 113, 0.6)'}]},
+    options:{responsive:true, animation:{duration:200}, scales:{y:{beginAtZero:true}}}
+  });
+
+  outsideChart = new Chart(ctxOut, {
+    type:'bar',
+    data:{ labels:['CO2','CH4','O2','SO2'], datasets:[{label:'Outside', data:[0,0,0,0], backgroundColor:'rgba(52, 152, 219, 0.6)'}]},
+    options:{responsive:true, animation:{duration:200}, scales:{y:{beginAtZero:true}}}
+  });
+
+  monitorTimer = setInterval(()=>{
+    const inside = { CO2: rand(300, 1000), CH4: rand(5, 80), O2: rand(17, 21), SO2: rand(0, 10) };
+    const outside= { CO2: rand(200, 800), CH4: rand(3, 40), O2: rand(18, 21), SO2: rand(0, 6) };
+
+    insideChart.data.datasets[0].data = [inside.CO2, inside.CH4, inside.O2, inside.SO2];
+    outsideChart.data.datasets[0].data = [outside.CO2, outside.CH4, outside.O2, outside.SO2];
+    insideChart.update(); outsideChart.update();
+
+    const depth = rand(10, 220);
+    document.getElementById('depthValue').textContent = `${depth} meters`;
+
+    const time = new Date().toLocaleTimeString();
+    historyData.unshift(`<tr><td>${time}</td><td>${inside.CO2}</td><td>${inside.CH4}</td><td>${inside.O2}</td><td>${inside.SO2}</td></tr>`);
+    if(historyData.length>50) historyData.pop();
+    document.getElementById('historyTable').innerHTML = historyData.join('');
+
+    checkAndAlert({ inside, outside, depth });
+  }, 3000);
+}
+
+function checkAndAlert({inside, outside, depth}){
+  const th = currentUser.alerts?.thresholds || { CO2:800, CH4:50, O2:19, SO2:5, depth:150 };
+  if(inside.CO2 > th.CO2){ triggerAlert({key:'CO2', title:'Gas Alert: CO2 High', message:`CO2 is ${inside.CO2} ppm (limit ${th.CO2})`}); }
+  if(inside.CH4 > th.CH4){ triggerAlert({key:'CH4', title:'Gas Alert: CH4 High', message:`CH4 is ${inside.CH4} ppm (limit ${th.CH4})`}); }
+  if(inside.O2 < th.O2){  triggerAlert({key:'O2',  title:'Gas Alert: O₂ Low',  message:`O₂ is ${inside.O2}% (min ${th.O2}%)`}); }
+  if(inside.SO2 > th.SO2){triggerAlert({key:'SO2', title:'Gas Alert: SO₂ High',message:`SO₂ is ${inside.SO2} ppm (limit ${th.SO2})`}); }
+  if(depth > th.depth){   triggerAlert({key:'DEPTH',title:'Depth Alert',       message:`Depth is ${depth} m (limit ${th.depth} m)`}); }
+}
+
+/* =========================
+   ADMIN PANEL
+   ========================= */
+function getAllUsers(){
+  const users = [];
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    // Skip internal flag keys
+    if(k.startsWith('__')) continue;
+    const obj = safeParse(localStorage.getItem(k));
+    if(obj && obj.email && obj.profile && 'alerts' in obj){
+      users.push(obj);
+    }
+  }
+  // Stable sort by email
+  users.sort((a,b)=>a.email.localeCompare(b.email));
+  return users;
+}
+
+function renderUsersTable(force=false){
+  if(!currentUser?.isAdmin) return;
+  const q = (document.getElementById('userSearch').value||'').toLowerCase().trim();
+  const tbody = document.getElementById('usersTable');
+  const users = getAllUsers().filter(u=>{
+    if(!q) return true;
+    return (u.email||'').toLowerCase().includes(q) || (u.profile?.name||'').toLowerCase().includes(q);
+  });
+  tbody.innerHTML = users.map(u=>{
+    const alerts = [
+      u.alerts?.browser?'Browser':null,
+      u.alerts?.sms?'SMS':null,
+      u.alerts?.email?'Email':null
+    ].filter(Boolean).join(', ') || '—';
+    return `<tr>
+      <td>${escapeHtml(u.email)}</td>
+      <td>${escapeHtml(u.profile?.name || '')}</td>
+      <td>${u.isAdmin? 'Yes':'No'}</td>
+      <td class="small">${escapeHtml(u.alerts?.phone || '')}</td>
+      <td class="small">${alerts}</td>
+      <td>
+        <div class="actions" style="justify-content:center">
+          <button class="btn ghost small" onclick="adminImpersonate('${encodeURIComponent(u.email)}')">Impersonate</button>
+          <button class="btn warn small" onclick="adminResetPasswordPrompt('${encodeURIComponent(u.email)}')">Reset PW</button>
+          <button class="btn danger small" onclick="adminDeleteUser('${encodeURIComponent(u.email)}')">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function adminCreateUser(){
+  const email = document.getElementById('adminNewEmail').value.trim();
+  const password = document.getElementById('adminNewPassword').value;
+  const isAdmin = document.getElementById('adminNewIsAdmin').checked;
+  if(!email || !password) return alert('Email and password required.');
+  if(localStorage.getItem(email)) return alert('User already exists.');
+
+  const userData = {
+    email, password, isAdmin: !!isAdmin,
+    profile:{ name:'', gender:'', age:'', address:'', picture:'' },
+    alerts:{
+      browser:true, sms:false, email:false,
+      phone:'', emailTo:'',
+      thresholds:{ CO2:800, CH4:50, O2:19, SO2:5, depth:150 },
+      webhooks:{ sms:'', email:'' }
+    }
+  };
+  localStorage.setItem(email, JSON.stringify(userData));
+  document.getElementById('adminNewEmail').value='';
+  document.getElementById('adminNewPassword').value='';
+  document.getElementById('adminNewIsAdmin').checked=false;
+  renderUsersTable(true);
+  alert('User created.');
+}
+
+function adminDeleteUser(rawEmail){
+  const email = decodeURIComponent(rawEmail);
+  if(!confirm(`Delete user ${email}? This cannot be undone.`)) return;
+  // Prevent deleting yourself to avoid lockout
+  if(currentUser && currentUser.email === email) return alert('You cannot delete the currently logged-in user.');
+  localStorage.removeItem(email);
+  renderUsersTable(true);
+  alert('User deleted.');
+}
+
+function adminResetPasswordPrompt(rawEmail){
+  const email = decodeURIComponent(rawEmail);
+  const pw = prompt(`Enter new password for ${email}`);
+  if(!pw) return;
+  const u = safeParse(localStorage.getItem(email));
+  if(!u){ alert('User not found.'); return; }
+  u.password = pw;
+  localStorage.setItem(email, JSON.stringify(u));
+  alert('Password reset.');
+}
+
+function adminImpersonate(rawEmail){
+  const email = decodeURIComponent(rawEmail);
+  const u = safeParse(localStorage.getItem(email));
+  if(!u){ alert('User not found.'); return; }
+  if(!confirm(`Impersonate ${email}? You will be logged in as this user.`)) return;
+  currentUser = u;
+  document.getElementById('menu').classList.remove('hidden');
+  document.getElementById('auth').classList.add('hidden');
+  document.getElementById('whoami').textContent = email + (currentUser.isAdmin?' (admin)':'');
+  document.getElementById('adminNav').classList.toggle('hidden', !currentUser.isAdmin);
+  document.getElementById('adminWho').textContent = currentUser.email;
+  showSection('dashboard');
+  loadProfile(); loadAlertsForm();
+  ensureNotificationPermission();
+  startGasMonitoring();
+}
+
+function exportAll(){
+  const users = getAllUsers();
+  const blob = new Blob([JSON.stringify(users, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'gas-system-users.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+
+function importAll(ev){
+  const f = ev.target.files?.[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      const arr = JSON.parse(e.target.result);
+      if(!Array.isArray(arr)) throw new Error('Invalid JSON (expected array).');
+      let count=0;
+      for(const u of arr){
+        if(u && u.email){ localStorage.setItem(u.email, JSON.stringify(u)); count++; }
+      }
+      alert(`Imported ${count} users.`);
+      renderUsersTable(true);
+    }catch(err){ alert('Import failed: ' + err.message); }
+    ev.target.value='';
+  };
+  reader.readAsText(f);
+}
+
+/* =========================
+   UTIL
+   ========================= */
+function persistUser(){ if(currentUser?.email){ localStorage.setItem(currentUser.email, JSON.stringify(currentUser)); } }
+function rand(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function safeParse(s){ try{return JSON.parse(s);}catch{return null;} }
+function escapeHtml(s){ return (s??'').toString().replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+</script>
+
+</body>
+</html>
